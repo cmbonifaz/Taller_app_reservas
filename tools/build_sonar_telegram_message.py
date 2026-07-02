@@ -12,15 +12,6 @@ def _read_env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
-def _escape_html(value: str) -> str:
-    return (
-        value.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-
 def _run_git(args: List[str]) -> str:
     completed = subprocess.run(
         ["git", *args],
@@ -52,6 +43,12 @@ def _get_commit_message() -> str:
 def _get_modified_files() -> List[str]:
     base_sha = _read_env("BASE_SHA")
     head_sha = _read_env("HEAD_SHA")
+    allowed_extensions = {
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+        ".py", ".java", ".go", ".cs", ".c", ".cc", ".cpp",
+        ".h", ".hpp", ".php", ".rb", ".kt", ".swift",
+        ".vue", ".svelte", ".sh", ".ps1"
+    }
 
     def _filter_files(file_names: List[str]) -> List[str]:
         filtered = []
@@ -60,6 +57,8 @@ def _get_modified_files() -> List[str]:
             if "/__pycache__/" in normalized or normalized.endswith(".pyc"):
                 continue
             if normalized in {"telegram_msg.txt", "reporte_seguridad.txt"}:
+                continue
+            if Path(normalized).suffix.lower() not in allowed_extensions:
                 continue
             if normalized and normalized not in filtered:
                 filtered.append(normalized)
@@ -248,56 +247,54 @@ def main() -> None:
     quality_gate_badge = "✅ APROBADO" if quality_gate_status == "OK" else "⚠️ REVISAR"
     quality_gate_color = "🟢" if quality_gate_status == "OK" else "🔴"
 
-    modified_files_block = "\n".join(f"• {_escape_html(file_name)}" for file_name in modified_files)
+    modified_files_block = "\n".join(f"- {file_name}" for file_name in modified_files)
 
-    message = f"""
-<b>🛡️ ALERTA SAST</b>
-<i>Informe automático generado por SonarQube Community</i>
-
-━━━━━━━━━━━━━━━━━━━━
-
-<b>📌 Resumen del evento</b>
-
-<b>Autor:</b> {_escape_html(commit_author)}
-<b>Commit:</b> {_escape_html(commit_message)}
-<b>Rama:</b> {_escape_html(branch_name)}
-<b>Quality Gate:</b> {quality_gate_color} <b>{_escape_html(quality_gate_badge)}</b> <i>({_escape_html(quality_gate_status)})</i>
+    message = f"""🛡️ ALERTA SAST
+Informe automático generado por SonarQube Community
 
 ━━━━━━━━━━━━━━━━━━━━
 
-<b>Archivos modificados</b>
+📌 Resumen del evento
+Autor: {commit_author}
+Commit: {commit_message}
+Rama: {branch_name}
+Quality Gate: {quality_gate_color} {quality_gate_badge} ({quality_gate_status})
+
+━━━━━━━━━━━━━━━━━━━━
+
+Archivos modificados
 {modified_files_block}
 
 ━━━━━━━━━━━━━━━━━━━━
 
-<b>📊 Métricas generales</b>
-• Bugs: <b>{bugs}</b>
-• Vulnerabilidades: <b>{vulnerabilities}</b>
-• Code Smells: <b>{code_smells}</b>
-• Líneas de código: <b>{lines_of_code}</b>
-• Duplicación: <b>{duplication}%</b>
+📊 Métricas generales
+Bugs: {bugs}
+Vulnerabilidades: {vulnerabilities}
+Code Smells: {code_smells}
+Líneas de código: {lines_of_code}
+Duplicación: {duplication}%
 
 ━━━━━━━━━━━━━━━━━━━━
 
-<b>🎯 Ratings de calidad</b>
-• Seguridad: <b>{security_rating}</b>
-• Fiabilidad: <b>{reliability_rating}</b>
-• Mantenibilidad: <b>{maintainability_rating}</b>
+🎯 Ratings de calidad
+Seguridad: {security_rating}
+Fiabilidad: {reliability_rating}
+Mantenibilidad: {maintainability_rating}
 
 ━━━━━━━━━━━━━━━━━━━━
 
-<b>🔐 Vulnerabilidades en dependencias</b>
-• CRITICAL: <b>{dependency_vulnerabilities['CRITICAL']}</b>
-• HIGH: <b>{dependency_vulnerabilities['HIGH']}</b>
-• MEDIUM: <b>{dependency_vulnerabilities['MEDIUM']}</b>
-• LOW: <b>{dependency_vulnerabilities['LOW']}</b>
-• TOTAL: <b>{dependency_vulnerabilities['TOTAL']}</b>
+🔐 Vulnerabilidades en dependencias
+CRITICAL: {dependency_vulnerabilities['CRITICAL']}
+HIGH: {dependency_vulnerabilities['HIGH']}
+MEDIUM: {dependency_vulnerabilities['MEDIUM']}
+LOW: {dependency_vulnerabilities['LOW']}
+TOTAL: {dependency_vulnerabilities['TOTAL']}
 
 ━━━━━━━━━━━━━━━━━━━━
 
-<b>🔗 Enlaces</b>
-• Commit: {commit_link if commit_link == 'N/D' else f'<a href="{commit_link}">Ver commit</a>'}
-• SonarQube: {sonar_link if sonar_link == 'N/D' else f'<a href="{sonar_link}">Abrir análisis</a>'}
+🔗 Enlaces
+Commit: {commit_link if commit_link == 'N/D' else commit_link}
+SonarQube: {sonar_link if sonar_link == 'N/D' else sonar_link}
 """.strip()
 
     Path("telegram_msg.txt").write_text(message, encoding="utf-8")

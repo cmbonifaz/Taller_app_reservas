@@ -2,7 +2,7 @@ export const HOTELES = [
     {
         id: 'hotel-parque',
         nombre: 'Hotel del Parque',
-        ciudad: 'Guayaquil',
+        ciudad: 'Guayakill',
         imagen: '/hotels/hotel-parque.jpg',
     },
     {
