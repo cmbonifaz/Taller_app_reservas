@@ -127,6 +127,22 @@ def _sonar_api_json(path: str, params: Dict[str, str]) -> Dict:
 
 
 def _get_sonar_measures() -> Dict[str, str]:
+    # Primero intentar leer métricas pre-capturadas por el workflow
+    prefetched = {
+        "bugs":                      _read_env("SONAR_BUGS"),
+        "vulnerabilities":           _read_env("SONAR_VULNERABILITIES"),
+        "code_smells":               _read_env("SONAR_CODE_SMELLS"),
+        "ncloc":                     _read_env("SONAR_NCLOC"),
+        "duplicated_lines_density":  _read_env("SONAR_DUPLICATION"),
+        "security_rating":           _read_env("SONAR_SECURITY_RATING"),
+        "reliability_rating":        _read_env("SONAR_RELIABILITY_RATING"),
+        "maintainability_rating":    _read_env("SONAR_MAINTAINABILITY_RATING"),
+    }
+    # Si al menos bugs o ncloc tiene valor, usamos los pre-capturados
+    if prefetched.get("bugs") or prefetched.get("ncloc"):
+        return {k: v for k, v in prefetched.items() if v}
+
+    # Fallback: llamar directamente a la API de SonarQube
     project_key = _read_env("SONAR_PROJECT_KEY")
     if not project_key:
         project_key = _read_env("GITHUB_REPOSITORY").split("/")[-1]

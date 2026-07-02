@@ -33,6 +33,29 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
+      # Capturar métricas inmediatamente después del scan, mientras la conexión está activa
+      - name: Obtener métricas de SonarQube
+        id: sonar_metrics
+        if: always()
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          METRICS=$(curl -sf -u "${SONAR_TOKEN}:" \
+            -H "ngrok-skip-browser-warning: true" \
+            "${SONAR_HOST_URL}/api/measures/component?component=AppReservas&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,maintainability_rating" \
+            || echo "{}")
+
+          echo "SONAR_BUGS=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('bugs','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
+          echo "SONAR_VULNERABILITIES=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('vulnerabilities','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
+          echo "SONAR_CODE_SMELLS=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('code_smells','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
+          echo "SONAR_NCLOC=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('ncloc','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
+          echo "SONAR_DUPLICATION=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('duplicated_lines_density','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
+          echo "SONAR_SECURITY_RATING=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','') for x in d.get('component',{}).get('measures',[])}; print(m.get('security_rating',''))" 2>/dev/null || echo '')" >> "$GITHUB_ENV"
+          echo "SONAR_RELIABILITY_RATING=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','') for x in d.get('component',{}).get('measures',[])}; print(m.get('reliability_rating',''))" 2>/dev/null || echo '')" >> "$GITHUB_ENV"
+          echo "SONAR_MAINTAINABILITY_RATING=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','') for x in d.get('component',{}).get('measures',[])}; print(m.get('maintainability_rating',''))" 2>/dev/null || echo '')" >> "$GITHUB_ENV"
+
       - name: Verificar Quality Gate
         id: quality_gate
         uses: SonarSource/sonarqube-quality-gate-action@master
@@ -56,6 +79,15 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_PROJECT_KEY: AppReservas
           QUALITY_GATE_STATUS: ${{ steps.quality_gate.outcome == 'success' && 'OK' || 'ERROR' }}
+          # Métricas pre-capturadas (evita llamadas API extra)
+          SONAR_BUGS: ${{ env.SONAR_BUGS }}
+          SONAR_VULNERABILITIES: ${{ env.SONAR_VULNERABILITIES }}
+          SONAR_CODE_SMELLS: ${{ env.SONAR_CODE_SMELLS }}
+          SONAR_NCLOC: ${{ env.SONAR_NCLOC }}
+          SONAR_DUPLICATION: ${{ env.SONAR_DUPLICATION }}
+          SONAR_SECURITY_RATING: ${{ env.SONAR_SECURITY_RATING }}
+          SONAR_RELIABILITY_RATING: ${{ env.SONAR_RELIABILITY_RATING }}
+          SONAR_MAINTAINABILITY_RATING: ${{ env.SONAR_MAINTAINABILITY_RATING }}
         run: |
           python tools/build_sonar_telegram_message.py
 
