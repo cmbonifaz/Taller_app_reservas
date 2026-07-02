@@ -115,10 +115,15 @@ def _sonar_api_json(path: str, params: Dict[str, str]) -> Dict:
     request = Request(url)
     credentials = base64.b64encode(f"{sonar_token}:".encode("utf-8")).decode("ascii")
     request.add_header("Authorization", f"Basic {credentials}")
+    # Bypass ngrok browser warning page (returns HTML otherwise)
+    request.add_header("ngrok-skip-browser-warning", "true")
 
-    with urlopen(request, timeout=30) as response:
-        payload = response.read().decode("utf-8", errors="replace")
-    return json.loads(payload)
+    try:
+        with urlopen(request, timeout=30) as response:
+            payload = response.read().decode("utf-8", errors="replace")
+        return json.loads(payload)
+    except Exception:
+        return {}
 
 
 def _get_sonar_measures() -> Dict[str, str]:

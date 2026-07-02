@@ -53,7 +53,8 @@ jobs:
           BASE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-          SONAR_PROJECT_KEY: ${{ github.event.repository.name }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: AppReservas
           QUALITY_GATE_STATUS: ${{ steps.quality_gate.outcome == 'success' && 'OK' || 'ERROR' }}
         run: |
           python tools/build_sonar_telegram_message.py
