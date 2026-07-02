@@ -1,0 +1,109 @@
+name: DevSecOps - SonarQube y Telegram
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - test
+  pull_request:
+    branches:
+      - main
+      - develop
+      - test
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonarqube-analysis:
+    name: SonarQube Scan y alerta Telegram
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup de Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Definir proyecto de SonarQube
+        shell: bash
+        run: |
+          PROJECT_KEY="${{ vars.SONAR_PROJECT_KEY }}"
+          if [ -z "$PROJECT_KEY" ]; then
+            PROJECT_KEY="${{ github.event.repository.name }}"
+          fi
+          echo "SONAR_PROJECT_KEY=$PROJECT_KEY" >> "$GITHUB_ENV"
+
+      - name: Ejecutar SonarQube en Pull Request
+        if: github.event_name == 'pull_request'
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+
+      - name: Ejecutar SonarQube en rama
+        if: github.event_name != 'pull_request'
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.branch.name=${{ github.ref_name }}
+
+      - name: Verificar Quality Gate
+        id: quality_gate
+        uses: SonarSource/sonarqube-quality-gate-action@master
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Generar mensaje para Telegram
+        if: always()
+        shell: bash
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_PROJECT_KEY: ${{ env.SONAR_PROJECT_KEY }}
+          SONAR_PR_KEY: ${{ github.event.pull_request.number }}
+          QUALITY_GATE_STATUS: ${{ steps.quality_gate.outcome }}
+        run: |
+          python tools/build_sonar_telegram_message.py
+
+      - name: Enviar mensaje a Telegram
+        if: always()
+        shell: bash
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text@telegram_msg.txt"
+
+      - name: Fallar el flujo si el Quality Gate no cumple
+        if: steps.quality_gate.outcome != 'success'
+        run: exit 1
