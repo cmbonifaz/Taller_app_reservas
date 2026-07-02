@@ -41,37 +41,50 @@ jobs:
           fi
           echo "SONAR_PROJECT_KEY=$PROJECT_KEY" >> "$GITHUB_ENV"
 
-      - name: Ejecutar SonarQube en Pull Request
-        if: github.event_name == 'pull_request'
-        uses: SonarSource/sonarqube-scan-action@master
+      - name: Ejecutar SonarQube Community Scanner
+        shell: bash
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
-            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
-            -Dsonar.pullrequest.branch=${{ github.head_ref }}
-            -Dsonar.pullrequest.base=${{ github.base_ref }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            EXTRA_ARGS="-Dsonar.pullrequest.key=${{ github.event.pull_request.number }} -Dsonar.pullrequest.branch=${{ github.head_ref }} -Dsonar.pullrequest.base=${{ github.base_ref }}"
+          else
+            EXTRA_ARGS="-Dsonar.branch.name=${{ github.ref_name }}"
+          fi
 
-      - name: Ejecutar SonarQube en rama
-        if: github.event_name != 'pull_request'
-        uses: SonarSource/sonarqube-scan-action@master
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
-            -Dsonar.branch.name=${{ github.ref_name }}
+          docker run --rm \
+            -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
+            -e SONAR_TOKEN="${SONAR_TOKEN}" \
+            -v "${{ github.workspace }}:/usr/src" \
+            -w /usr/src \
+            sonarsource/sonar-scanner-cli:latest \
+            -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
+            -Dsonar.host.url="${SONAR_HOST_URL}" \
+            -Dsonar.token="${SONAR_TOKEN}" \
+            $EXTRA_ARGS
 
-      - name: Verificar Quality Gate
+      - name: Obtener estado del Quality Gate
         id: quality_gate
-        uses: SonarSource/sonarqube-quality-gate-action@master
-        continue-on-error: true
-        timeout-minutes: 5
+        shell: bash
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            QUERY="pullRequest=${{ github.event.pull_request.number }}"
+          else
+            QUERY="branch=${{ github.ref_name }}"
+          fi
+
+          export QUALITY_GATE_JSON=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&${QUERY}")
+          STATUS=$(python - <<'PY'
+import json, os
+data = json.loads(os.environ['QUALITY_GATE_JSON'])
+print(data.get('projectStatus', {}).get('status', 'NONE'))
+PY
+)
+          echo "quality_gate_status=$STATUS" >> "$GITHUB_OUTPUT"
 
       - name: Generar mensaje para Telegram
         if: always()
@@ -89,7 +102,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_PROJECT_KEY: ${{ env.SONAR_PROJECT_KEY }}
           SONAR_PR_KEY: ${{ github.event.pull_request.number }}
-          QUALITY_GATE_STATUS: ${{ steps.quality_gate.outcome }}
+          QUALITY_GATE_STATUS: ${{ steps.quality_gate.outputs.quality_gate_status }}
         run: |
           python tools/build_sonar_telegram_message.py
 
@@ -105,5 +118,5 @@ jobs:
             --data-urlencode "text@telegram_msg.txt"
 
       - name: Fallar el flujo si el Quality Gate no cumple
-        if: steps.quality_gate.outcome != 'success'
+        if: steps.quality_gate.outputs.quality_gate_status != 'OK'
         run: exit 1

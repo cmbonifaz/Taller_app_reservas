@@ -12,6 +12,15 @@ def _read_env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+def _escape_html(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
 def _run_git(args: List[str]) -> str:
     completed = subprocess.run(
         ["git", *args],
@@ -44,14 +53,32 @@ def _get_modified_files() -> List[str]:
     base_sha = _read_env("BASE_SHA")
     head_sha = _read_env("HEAD_SHA")
 
+    def _filter_files(file_names: List[str]) -> List[str]:
+        filtered = []
+        for file_name in file_names:
+            normalized = file_name.replace("\\", "/")
+            if "/__pycache__/" in normalized or normalized.endswith(".pyc"):
+                continue
+            if normalized in {"telegram_msg.txt", "reporte_seguridad.txt"}:
+                continue
+            if normalized and normalized not in filtered:
+                filtered.append(normalized)
+        return filtered
+
     if base_sha and head_sha:
         diff_output = _run_git(["diff", "--name-only", base_sha, head_sha])
         if diff_output:
-            return [line.strip() for line in diff_output.splitlines() if line.strip()]
+            files = [line.strip() for line in diff_output.splitlines() if line.strip()]
+            filtered = _filter_files(files)
+            if filtered:
+                return filtered
 
     diff_output = _run_git(["show", "--pretty=", "--name-only", "HEAD"])
     if diff_output:
-        return [line.strip() for line in diff_output.splitlines() if line.strip()]
+        files = [line.strip() for line in diff_output.splitlines() if line.strip()]
+        filtered = _filter_files(files)
+        if filtered:
+            return filtered
 
     return ["Sin archivos detectados"]
 
@@ -112,8 +139,35 @@ def _get_sonar_measures() -> Dict[str, str]:
     return measures
 
 
+def _get_quality_gate_status() -> str:
+    status = _read_env("QUALITY_GATE_STATUS")
+    if status:
+        return status
+
+    sonar_host = _read_env("SONAR_HOST_URL")
+    sonar_token = _read_env("SONAR_TOKEN")
+    project_key = _read_env("SONAR_PROJECT_KEY")
+    if not sonar_host or not sonar_token or not project_key:
+        return "N/D"
+
+    params: Dict[str, str] = {"projectKey": project_key}
+    event_name = _read_env("GITHUB_EVENT_NAME")
+    if event_name == "pull_request":
+        params["pullRequest"] = _read_env("SONAR_PR_KEY")
+    else:
+        branch_name = _read_env("GITHUB_REF_NAME")
+        if branch_name:
+            params["branch"] = branch_name
+
+    data = _sonar_api_json("/api/qualitygates/project_status", params)
+    return data.get("projectStatus", {}).get("status", "N/D")
+
+
 def _get_dependency_vulnerabilities() -> Dict[str, int]:
     counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "TOTAL": 0}
+    if subprocess.run(["where", "npm"], capture_output=True, text=True).returncode != 0:
+        return counts
+
     for package_dir in ["auth-service", "booking-service", "frontend", "notification-service", "user-service"]:
         package_path = Path(package_dir)
         lockfile = package_path / "package-lock.json"
@@ -121,14 +175,17 @@ def _get_dependency_vulnerabilities() -> Dict[str, int]:
         if not package_path.exists() or (not lockfile.exists() and not shrinkwrap.exists()):
             continue
 
-        completed = subprocess.run(
-            ["npm", "audit", "--json", "--omit=dev"],
-            cwd=package_path,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        try:
+            completed = subprocess.run(
+                ["npm", "audit", "--json", "--omit=dev"],
+                cwd=package_path,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except FileNotFoundError:
+            return counts
 
         raw_output = completed.stdout.strip() or completed.stderr.strip()
         if not raw_output:
@@ -152,6 +209,7 @@ def _get_dependency_vulnerabilities() -> Dict[str, int]:
 
 def main() -> None:
     sonar_measures = _get_sonar_measures()
+    quality_gate_status = _get_quality_gate_status()
     dependency_vulnerabilities = _get_dependency_vulnerabilities()
 
     commit_author = _get_commit_author()
@@ -194,60 +252,60 @@ def main() -> None:
     else:
         commit_link = "N/D"
 
-    dependency_block = "\n".join(
-        [
-            f"CRITICAL: {dependency_vulnerabilities['CRITICAL']}",
-            f"HIGH: {dependency_vulnerabilities['HIGH']}",
-            f"MEDIUM: {dependency_vulnerabilities['MEDIUM']}",
-            f"LOW: {dependency_vulnerabilities['LOW']}",
-            f"TOTAL: {dependency_vulnerabilities['TOTAL']}",
-        ]
-    )
+    quality_gate_badge = "✅ APROBADO" if quality_gate_status == "OK" else "⚠️ REVISAR"
+    quality_gate_color = "🟢" if quality_gate_status == "OK" else "🔴"
 
-    modified_files_block = "\n".join(f"- {file_name}" for file_name in modified_files)
+    modified_files_block = "\n".join(f"• {_escape_html(file_name)}" for file_name in modified_files)
 
-    message = f"""Alertas SAST
+    message = f"""
+<b>🛡️ ALERTA SAST</b>
+<i>Informe automático generado por SonarQube Community</i>
 
-Autor: {commit_author}
+━━━━━━━━━━━━━━━━━━━━
 
-Commit: {commit_message}
+<b>📌 Resumen del evento</b>
 
-Rama: {branch_name}
+<b>Autor:</b> {_escape_html(commit_author)}
+<b>Commit:</b> {_escape_html(commit_message)}
+<b>Rama:</b> {_escape_html(branch_name)}
+<b>Quality Gate:</b> {quality_gate_color} <b>{_escape_html(quality_gate_badge)}</b> <i>({_escape_html(quality_gate_status)})</i>
 
-Archivos Modificados:
+━━━━━━━━━━━━━━━━━━━━
+
+<b>Archivos modificados</b>
 {modified_files_block}
 
---------------------------------------------
+━━━━━━━━━━━━━━━━━━━━
 
-Métricas Generales:
+<b>📊 Métricas generales</b>
+• Bugs: <b>{bugs}</b>
+• Vulnerabilidades: <b>{vulnerabilities}</b>
+• Code Smells: <b>{code_smells}</b>
+• Líneas de código: <b>{lines_of_code}</b>
+• Duplicación: <b>{duplication}%</b>
 
-Bugs: {bugs}
+━━━━━━━━━━━━━━━━━━━━
 
-Vulnerabilidades: {vulnerabilities}
+<b>🎯 Ratings de calidad</b>
+• Seguridad: <b>{security_rating}</b>
+• Fiabilidad: <b>{reliability_rating}</b>
+• Mantenibilidad: <b>{maintainability_rating}</b>
 
-Code Smells: {code_smells}
+━━━━━━━━━━━━━━━━━━━━
 
-Líneas de código: {lines_of_code}
+<b>🔐 Vulnerabilidades en dependencias</b>
+• CRITICAL: <b>{dependency_vulnerabilities['CRITICAL']}</b>
+• HIGH: <b>{dependency_vulnerabilities['HIGH']}</b>
+• MEDIUM: <b>{dependency_vulnerabilities['MEDIUM']}</b>
+• LOW: <b>{dependency_vulnerabilities['LOW']}</b>
+• TOTAL: <b>{dependency_vulnerabilities['TOTAL']}</b>
 
-Duplicación: {duplication}%
+━━━━━━━━━━━━━━━━━━━━
 
-Ratings de Calidad:
-
-Seguridad: {security_rating}
-
-Fiabilidad: {reliability_rating}
-
-Mantenibilidad: {maintainability_rating}
-
-Vulnerabilidades en dependencias:
-
-{dependency_block}
-
-----------------------------------------
-Ver detalles del commit: {commit_link}
-
-Ver detalles en SonarQube: {sonar_link}
-"""
+<b>🔗 Enlaces</b>
+• Commit: {commit_link if commit_link == 'N/D' else f'<a href="{commit_link}">Ver commit</a>'}
+• SonarQube: {sonar_link if sonar_link == 'N/D' else f'<a href="{sonar_link}">Abrir análisis</a>'}
+""".strip()
 
     Path("telegram_msg.txt").write_text(message, encoding="utf-8")
     print(message)

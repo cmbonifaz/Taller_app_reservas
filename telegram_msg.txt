@@ -1,0 +1,48 @@
+<b>🛡️ ALERTA SAST</b>
+<i>Informe automático generado por SonarQube Community</i>
+
+━━━━━━━━━━━━━━━━━━━━
+
+<b>📌 Resumen del evento</b>
+
+<b>Autor:</b> Edwin-Tirado
+<b>Commit:</b> Test 1 Scanner
+<b>Rama:</b> Desconocida
+<b>Quality Gate:</b> 🔴 <b>⚠️ REVISAR</b> <i>(N/D)</i>
+
+━━━━━━━━━━━━━━━━━━━━
+
+<b>Archivos modificados</b>
+• .github/workflows/sonarqube.yml
+• tools/build_sonar_telegram_message.py
+
+━━━━━━━━━━━━━━━━━━━━
+
+<b>📊 Métricas generales</b>
+• Bugs: <b>0</b>
+• Vulnerabilidades: <b>0</b>
+• Code Smells: <b>0</b>
+• Líneas de código: <b>0</b>
+• Duplicación: <b>0%</b>
+
+━━━━━━━━━━━━━━━━━━━━
+
+<b>🎯 Ratings de calidad</b>
+• Seguridad: <b>N/D</b>
+• Fiabilidad: <b>N/D</b>
+• Mantenibilidad: <b>N/D</b>
+
+━━━━━━━━━━━━━━━━━━━━
+
+<b>🔐 Vulnerabilidades en dependencias</b>
+• CRITICAL: <b>0</b>
+• HIGH: <b>0</b>
+• MEDIUM: <b>0</b>
+• LOW: <b>0</b>
+• TOTAL: <b>0</b>
+
+━━━━━━━━━━━━━━━━━━━━
+
+<b>🔗 Enlaces</b>
+• Commit: N/D
+• SonarQube: N/D
