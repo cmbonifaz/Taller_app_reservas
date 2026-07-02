@@ -4,14 +4,6 @@ on:
   push:
     branches:
       - main
-      - develop
-      - test
-  pull_request:
-    branches:
-      - main
-      - develop
-      - test
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -41,18 +33,29 @@ jobs:
           fi
           echo "SONAR_PROJECT_KEY=$PROJECT_KEY" >> "$GITHUB_ENV"
 
+      - name: Detectar archivos cambiados
+        id: changed_files
+        shell: bash
+        run: |
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | tr '\n' ',' | sed 's/,$//')
+          else
+            CHANGED_FILES=$(git ls-files | tr '\n' ',' | sed 's/,$//')
+          fi
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No se detectaron archivos cambiados en este commit."
+            exit 0
+          fi
+
+          echo "sonar_inclusions=$CHANGED_FILES" >> "$GITHUB_OUTPUT"
+
       - name: Ejecutar SonarQube Community Scanner
         shell: bash
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            EXTRA_ARGS="-Dsonar.pullrequest.key=${{ github.event.pull_request.number }} -Dsonar.pullrequest.branch=${{ github.head_ref }} -Dsonar.pullrequest.base=${{ github.base_ref }}"
-          else
-            EXTRA_ARGS="-Dsonar.branch.name=${{ github.ref_name }}"
-          fi
-
           docker run --rm \
             -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
             -e SONAR_TOKEN="${SONAR_TOKEN}" \
@@ -62,7 +65,7 @@ jobs:
             -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
             -Dsonar.host.url="${SONAR_HOST_URL}" \
             -Dsonar.token="${SONAR_TOKEN}" \
-            $EXTRA_ARGS
+            -Dsonar.inclusions="${{ steps.changed_files.outputs.sonar_inclusions }}"
 
       - name: Obtener estado del Quality Gate
         id: quality_gate
@@ -71,13 +74,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            QUERY="pullRequest=${{ github.event.pull_request.number }}"
-          else
-            QUERY="branch=${{ github.ref_name }}"
-          fi
-
-          QUALITY_GATE_JSON=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&${QUERY}")
+          QUALITY_GATE_JSON=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}")
           STATUS=$(QUALITY_GATE_JSON="$QUALITY_GATE_JSON" python -c "import json, os; data = json.loads(os.environ['QUALITY_GATE_JSON']); print(data.get('projectStatus', {}).get('status', 'NONE'))")
           echo "quality_gate_status=$STATUS" >> "$GITHUB_OUTPUT"
 
@@ -90,13 +87,10 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_HEAD_REF: ${{ github.head_ref }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
           BASE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_PROJECT_KEY: ${{ env.SONAR_PROJECT_KEY }}
-          SONAR_PR_KEY: ${{ github.event.pull_request.number }}
           QUALITY_GATE_STATUS: ${{ steps.quality_gate.outputs.quality_gate_status }}
         run: |
           python tools/build_sonar_telegram_message.py

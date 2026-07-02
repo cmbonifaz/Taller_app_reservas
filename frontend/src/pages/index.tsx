@@ -70,7 +70,7 @@ export default function Home() {
         ) : (
           <>
             <p className="text-[#0D3B66] text-center mb-6">
-              Tu plataforma de reservas confiable y sencilla.
+              Tu plataforma de reservas confiable, sencilla y lista para crecer.
             </p>
             <div className="flex justify-center gap-4">
               <Link

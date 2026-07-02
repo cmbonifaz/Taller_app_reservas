@@ -83,6 +83,16 @@ def _get_modified_files() -> List[str]:
     return ["Sin archivos detectados"]
 
 
+def _get_branch_name() -> str:
+    branch = _read_env("GITHUB_HEAD_REF") or _read_env("GITHUB_REF_NAME")
+    if branch:
+        return branch
+    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    if branch and branch != "HEAD":
+        return branch
+    return "Desconocida"
+
+
 def _map_rating(value: str) -> str:
     ratings = {
         "1": "A",
@@ -124,14 +134,6 @@ def _get_sonar_measures() -> Dict[str, str]:
         ),
     }
 
-    event_name = _read_env("GITHUB_EVENT_NAME")
-    if event_name == "pull_request":
-        params["pullRequest"] = _read_env("SONAR_PR_KEY")
-    else:
-        branch_name = _read_env("GITHUB_REF_NAME")
-        if branch_name:
-            params["branch"] = branch_name
-
     data = _sonar_api_json("/api/measures/component", params)
     measures: Dict[str, str] = {}
     for measure in data.get("component", {}).get("measures", []):
@@ -150,16 +152,7 @@ def _get_quality_gate_status() -> str:
     if not sonar_host or not sonar_token or not project_key:
         return "N/D"
 
-    params: Dict[str, str] = {"projectKey": project_key}
-    event_name = _read_env("GITHUB_EVENT_NAME")
-    if event_name == "pull_request":
-        params["pullRequest"] = _read_env("SONAR_PR_KEY")
-    else:
-        branch_name = _read_env("GITHUB_REF_NAME")
-        if branch_name:
-            params["branch"] = branch_name
-
-    data = _sonar_api_json("/api/qualitygates/project_status", params)
+    data = _sonar_api_json("/api/qualitygates/project_status", {"projectKey": project_key})
     return data.get("projectStatus", {}).get("status", "N/D")
 
 
@@ -215,7 +208,7 @@ def main() -> None:
     commit_author = _get_commit_author()
     commit_message = _get_commit_message()
     modified_files = _get_modified_files()
-    branch_name = _read_env("GITHUB_HEAD_REF") or _read_env("GITHUB_REF_NAME") or "Desconocida"
+    branch_name = _get_branch_name()
 
     bugs = sonar_measures.get("bugs", "0")
     vulnerabilities = sonar_measures.get("vulnerabilities", "0")
