@@ -1,0 +1,6 @@
+projectKey=taller_app_reservas
+serverUrl=https://anemia-oops-trunks.ngrok-free.dev
+serverVersion=26.6.0.123539
+dashboardUrl=https://anemia-oops-trunks.ngrok-free.dev/dashboard?id=taller_app_reservas
+ceTaskId=905b8c0e-45f2-4331-b1bf-76a25580ed62
+ceTaskUrl=https://anemia-oops-trunks.ngrok-free.dev/api/ce/task?id=905b8c0e-45f2-4331-b1bf-76a25580ed62
