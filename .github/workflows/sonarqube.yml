@@ -77,13 +77,8 @@ jobs:
             QUERY="branch=${{ github.ref_name }}"
           fi
 
-          export QUALITY_GATE_JSON=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&${QUERY}")
-          STATUS=$(python - <<'PY'
-import json, os
-data = json.loads(os.environ['QUALITY_GATE_JSON'])
-print(data.get('projectStatus', {}).get('status', 'NONE'))
-PY
-)
+          QUALITY_GATE_JSON=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&${QUERY}")
+          STATUS=$(QUALITY_GATE_JSON="$QUALITY_GATE_JSON" python -c "import json, os; data = json.loads(os.environ['QUALITY_GATE_JSON']); print(data.get('projectStatus', {}).get('status', 'NONE'))")
           echo "quality_gate_status=$STATUS" >> "$GITHUB_OUTPUT"
 
       - name: Generar mensaje para Telegram

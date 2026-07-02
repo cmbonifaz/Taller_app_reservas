@@ -1,0 +1,3 @@
+Archivo de prueba para validar el workflow de SonarQube y Telegram.
+
+Este archivo se puede modificar o eliminar después de la prueba.
