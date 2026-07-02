@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -24,92 +27,19 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Definir proyecto de SonarQube
-        shell: bash
-        run: |
-          PROJECT_KEY="${{ vars.SONAR_PROJECT_KEY }}"
-          if [ -z "$PROJECT_KEY" ]; then
-            PROJECT_KEY="${{ github.event.repository.name }}"
-          fi
-          echo "SONAR_PROJECT_KEY=$PROJECT_KEY" >> "$GITHUB_ENV"
-
-      - name: Normalizar URL de SonarQube
-        shell: bash
+      - name: Ejecutar SonarQube Scanner
+        uses: SonarSource/sonarqube-scan-action@master
         env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: |
-          SONAR_BASE_URL="${SONAR_HOST_URL%/}"
-          SONAR_BASE_URL="${SONAR_BASE_URL%/api}"
-          echo "SONAR_BASE_URL=$SONAR_BASE_URL" >> "$GITHUB_ENV"
 
-      - name: Detectar archivos cambiados
-        id: changed_files
-        shell: bash
-        run: |
-          if git rev-parse HEAD^ >/dev/null 2>&1; then
-            mapfile -t file_names < <(git diff --name-only HEAD^ HEAD)
-          else
-            mapfile -t file_names < <(git ls-files)
-          fi
-
-          code_files=()
-          for file_name in "${file_names[@]}"; do
-            normalized="${file_name//\\//}"
-            case "$normalized" in
-              */__pycache__/*|*.pyc)
-                continue
-                ;;
-            esac
-
-            case "${normalized##*.}" in
-              js|jsx|ts|tsx|mjs|cjs|py|java|go|cs|c|cc|cpp|h|hpp|php|rb|kt|swift|vue|svelte|sh|ps1)
-                code_files+=("$normalized")
-                ;;
-            esac
-          done
-
-          if [ ${#code_files[@]} -eq 0 ]; then
-            echo "skip_sonar=true" >> "$GITHUB_OUTPUT"
-            echo "sonar_inclusions=" >> "$GITHUB_OUTPUT"
-          else
-            joined=$(printf '%s,' "${code_files[@]}")
-            joined=${joined%,}
-            echo "skip_sonar=false" >> "$GITHUB_OUTPUT"
-            echo "sonar_inclusions=$joined" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Ejecutar SonarQube Community Scanner
-        if: steps.changed_files.outputs.skip_sonar != 'true'
-        shell: bash
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_BASE_URL }}
-        run: |
-          docker run --rm \
-            -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
-            -e SONAR_TOKEN="${SONAR_TOKEN}" \
-            -v "${{ github.workspace }}:/usr/src" \
-            -w /usr/src \
-            sonarsource/sonar-scanner-cli:latest \
-            -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
-            -Dsonar.host.url="${SONAR_HOST_URL}" \
-            -Dsonar.token="${SONAR_TOKEN}" \
-            -Dsonar.inclusions="${{ steps.changed_files.outputs.sonar_inclusions }}"
-
-      - name: Saltar SonarQube si no hay archivos de código
-        if: steps.changed_files.outputs.skip_sonar == 'true'
-        run: echo "No hay archivos de código para analizar en este commit."
-
-      - name: Obtener estado del Quality Gate
+      - name: Verificar Quality Gate
         id: quality_gate
-        shell: bash
+        uses: SonarSource/sonarqube-quality-gate-action@master
+        continue-on-error: true
+        timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_BASE_URL }}
-        run: |
-          QUALITY_GATE_JSON=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}")
-          STATUS=$(QUALITY_GATE_JSON="$QUALITY_GATE_JSON" python -c "import json, os; data = json.loads(os.environ['QUALITY_GATE_JSON']); print(data.get('projectStatus', {}).get('status', 'NONE'))")
-          echo "quality_gate_status=$STATUS" >> "$GITHUB_OUTPUT"
 
       - name: Generar mensaje para Telegram
         if: always()
@@ -122,9 +52,9 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           BASE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
-          SONAR_HOST_URL: ${{ env.SONAR_BASE_URL }}
-          SONAR_PROJECT_KEY: ${{ env.SONAR_PROJECT_KEY }}
-          QUALITY_GATE_STATUS: ${{ steps.quality_gate.outputs.quality_gate_status }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_PROJECT_KEY: ${{ github.event.repository.name }}
+          QUALITY_GATE_STATUS: ${{ steps.quality_gate.outcome == 'success' && 'OK' || 'ERROR' }}
         run: |
           python tools/build_sonar_telegram_message.py
 
@@ -140,5 +70,5 @@ jobs:
             --data-urlencode "text@telegram_msg.txt"
 
       - name: Fallar el flujo si el Quality Gate no cumple
-        if: steps.quality_gate.outputs.quality_gate_status != 'OK'
+        if: steps.quality_gate.outcome != 'success'
         run: exit 1
