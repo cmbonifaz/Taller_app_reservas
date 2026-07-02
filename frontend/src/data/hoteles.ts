@@ -8,7 +8,7 @@ export const HOTELES = [
     {
         id: 'mashpi-lodge',
         nombre: 'Mashpi Lodge',
-        ciudad: 'Pichincha',
+        ciudad: 'Pichinchaa',
         imagen: '/hotels/mashpi-lodge.jpg',
     },
     {
