@@ -5,14 +5,14 @@ Informe automático generado por SonarQube Community
 
 📌 Resumen del evento
 Autor: Edwin-Tirado
-Commit: Test 4 Scanner
+Commit: Fixes
 Rama: main
 Quality Gate: 🔴 ⚠️ REVISAR (N/D)
 
 ━━━━━━━━━━━━━━━━━━━━
 
 Archivos modificados
-- frontend/src/pages/index.tsx
+- frontend/src/data/hoteles.ts
 - tools/build_sonar_telegram_message.py
 
 ━━━━━━━━━━━━━━━━━━━━

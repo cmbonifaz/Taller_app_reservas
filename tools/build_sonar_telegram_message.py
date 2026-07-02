@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, List
@@ -157,7 +158,7 @@ def _get_quality_gate_status() -> str:
 
 def _get_dependency_vulnerabilities() -> Dict[str, int]:
     counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "TOTAL": 0}
-    if subprocess.run(["where", "npm"], capture_output=True, text=True).returncode != 0:
+    if shutil.which("npm") is None:
         return counts
 
     for package_dir in ["auth-service", "booking-service", "frontend", "notification-service", "user-service"]:
