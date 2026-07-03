@@ -33,7 +33,18 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      # Capturar métricas inmediatamente después del scan, mientras la conexión está activa
+      # El Quality Gate hace polling interno y espera a que SonarQube
+      # termine de procesar el análisis antes de continuar.
+      - name: Verificar Quality Gate
+        id: quality_gate
+        uses: SonarSource/sonarqube-quality-gate-action@master
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # Las métricas se consultan DESPUÉS del Quality Gate, garantizando
+      # que SonarQube ya terminó de persistir los resultados del análisis.
       - name: Obtener métricas de SonarQube
         id: sonar_metrics
         if: always()
@@ -42,25 +53,30 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          # Eliminar barra diagonal final de SONAR_HOST_URL para evitar errores de ruta (//api/...)
           CLEAN_HOST_URL="${SONAR_HOST_URL%/}"
-          
-          echo "Consultando métricas en: ${CLEAN_HOST_URL}/api/measures/component?component=taller_app_reservas"
-          
-          # Realizar la consulta a la API de SonarQube sin -f para poder capturar errores en los logs
-          METRICS_RAW=$(curl -s -u "${SONAR_TOKEN}:" \
-            -H "ngrok-skip-browser-warning: true" \
-            "${CLEAN_HOST_URL}/api/measures/component?component=taller_app_reservas&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,maintainability_rating")
-          
-          echo "Respuesta de SonarQube: ${METRICS_RAW}"
-          
-          # Validar si obtuvimos una respuesta JSON que contenga 'component'
-          if echo "${METRICS_RAW}" | grep -q '"component"'; then
-            METRICS="${METRICS_RAW}"
-          else
-            echo "Error: No se recibió una respuesta válida de SonarQube."
-            METRICS="{}"
-          fi
+          PROJECT_KEY="taller_app_reservas"
+          METRICS_URL="${CLEAN_HOST_URL}/api/measures/component?component=${PROJECT_KEY}&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,maintainability_rating"
+
+          echo "Consultando métricas en: ${METRICS_URL}"
+
+          # Retry hasta 5 intentos con 10 segundos de espera entre cada uno
+          METRICS="{}"
+          for i in 1 2 3 4 5; do
+            METRICS_RAW=$(curl -s -u "${SONAR_TOKEN}:" \
+              -H "ngrok-skip-browser-warning: true" \
+              "${METRICS_URL}")
+
+            echo "Intento ${i} - Respuesta de SonarQube: ${METRICS_RAW}"
+
+            if echo "${METRICS_RAW}" | grep -q '"component"'; then
+              METRICS="${METRICS_RAW}"
+              echo "Métricas obtenidas correctamente en el intento ${i}."
+              break
+            else
+              echo "Intento ${i} fallido. Esperando 10 segundos..."
+              sleep 10
+            fi
+          done
 
           echo "SONAR_BUGS=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('bugs','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
           echo "SONAR_VULNERABILITIES=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('vulnerabilities','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
@@ -70,14 +86,6 @@ jobs:
           echo "SONAR_SECURITY_RATING=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','') for x in d.get('component',{}).get('measures',[])}; print(m.get('security_rating',''))" 2>/dev/null || echo '')" >> "$GITHUB_ENV"
           echo "SONAR_RELIABILITY_RATING=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','') for x in d.get('component',{}).get('measures',[])}; print(m.get('reliability_rating',''))" 2>/dev/null || echo '')" >> "$GITHUB_ENV"
           echo "SONAR_MAINTAINABILITY_RATING=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','') for x in d.get('component',{}).get('measures',[])}; print(m.get('maintainability_rating',''))" 2>/dev/null || echo '')" >> "$GITHUB_ENV"
-
-      - name: Verificar Quality Gate
-        id: quality_gate
-        uses: SonarSource/sonarqube-quality-gate-action@master
-        continue-on-error: true
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Generar mensaje para Telegram
         if: always()
@@ -94,7 +102,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_PROJECT_KEY: taller_app_reservas
           QUALITY_GATE_STATUS: ${{ steps.quality_gate.outcome == 'success' && 'OK' || 'ERROR' }}
-          # Métricas pre-capturadas (evita llamadas API extra)
+          # Métricas pre-capturadas
           SONAR_BUGS: ${{ env.SONAR_BUGS }}
           SONAR_VULNERABILITIES: ${{ env.SONAR_VULNERABILITIES }}
           SONAR_CODE_SMELLS: ${{ env.SONAR_CODE_SMELLS }}
