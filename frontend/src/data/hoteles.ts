@@ -10,8 +10,6 @@ export const HOTELES = [
         nombre: 'Mashpi Lodge',
         ciudad: 'Pichinchaa',
         imagen: '/hotels/mashpi-lodge.jpg',
-        descripcion: 'Mashpi Lodge is a luxury hotel located in the cloud forest of Ecuador, just two hours from Quito. It offers a unique experience for nature lovers, with comfortable rooms, excellent service, and a variety of activities for guests.',
-
 
     },
     {
