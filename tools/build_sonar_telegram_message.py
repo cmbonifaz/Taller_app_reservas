@@ -101,7 +101,13 @@ def _map_rating(value: str) -> str:
         "4": "D",
         "5": "E",
     }
-    return ratings.get(str(value).strip(), str(value).strip() or "N/D")
+    val_str = str(value).strip()
+    try:
+        if val_str and (val_str.endswith(".0") or "." in val_str):
+            val_str = str(int(float(val_str)))
+    except ValueError:
+        pass
+    return ratings.get(val_str, val_str or "N/D")
 
 
 def _sonar_api_json(path: str, params: Dict[str, str]) -> Dict:
