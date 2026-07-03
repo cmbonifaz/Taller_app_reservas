@@ -128,7 +128,8 @@ def _sonar_api_json(path: str, params: Dict[str, str]) -> Dict:
         with urlopen(request, timeout=30) as response:
             payload = response.read().decode("utf-8", errors="replace")
         return json.loads(payload)
-    except Exception:
+    except Exception as e:
+        print(f"Error al conectar con la API de SonarQube ({url}): {e}")
         return {}
 
 
@@ -144,8 +145,8 @@ def _get_sonar_measures() -> Dict[str, str]:
         "reliability_rating":        _read_env("SONAR_RELIABILITY_RATING"),
         "maintainability_rating":    _read_env("SONAR_MAINTAINABILITY_RATING"),
     }
-    # Si al menos bugs o ncloc tiene valor, usamos los pre-capturados
-    if prefetched.get("bugs") or prefetched.get("ncloc"):
+    # Si la métrica ncloc (líneas de código) fue pre-capturada y es distinta de "0", usamos los pre-capturados
+    if prefetched.get("ncloc") and prefetched.get("ncloc") != "0":
         return {k: v for k, v in prefetched.items() if v}
 
     # Fallback: llamar directamente a la API de SonarQube

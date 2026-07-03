@@ -19,6 +19,12 @@ export const HOTELES = [
         imagen: '/hotels/casa-gangotena.jpg',
     },
     {
+        id: 'casa-gangotena',
+        nombre: 'Casa Gangotena',
+        ciudad: 'Quito',
+        imagen: '/hotels/casa-gangotena.jpg',
+    },
+    {
         id: 'finch-bay',
         nombre: 'Finch Bay Galápagos Hotel',
         ciudad: 'Galápagos',

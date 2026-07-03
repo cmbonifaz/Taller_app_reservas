@@ -42,10 +42,25 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          METRICS=$(curl -sf -u "${SONAR_TOKEN}:" \
+          # Eliminar barra diagonal final de SONAR_HOST_URL para evitar errores de ruta (//api/...)
+          CLEAN_HOST_URL="${SONAR_HOST_URL%/}"
+          
+          echo "Consultando métricas en: ${CLEAN_HOST_URL}/api/measures/component?component=taller_app_reservas"
+          
+          # Realizar la consulta a la API de SonarQube sin -f para poder capturar errores en los logs
+          METRICS_RAW=$(curl -s -u "${SONAR_TOKEN}:" \
             -H "ngrok-skip-browser-warning: true" \
-            "${SONAR_HOST_URL}/api/measures/component?component=taller_app_reservas&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,maintainability_rating" \
-            || echo "{}")
+            "${CLEAN_HOST_URL}/api/measures/component?component=taller_app_reservas&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,maintainability_rating")
+          
+          echo "Respuesta de SonarQube: ${METRICS_RAW}"
+          
+          # Validar si obtuvimos una respuesta JSON que contenga 'component'
+          if echo "${METRICS_RAW}" | grep -q '"component"'; then
+            METRICS="${METRICS_RAW}"
+          else
+            echo "Error: No se recibió una respuesta válida de SonarQube."
+            METRICS="{}"
+          fi
 
           echo "SONAR_BUGS=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('bugs','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
           echo "SONAR_VULNERABILITIES=$(echo $METRICS | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); m={x['metric']:x.get('value','0') for x in d.get('component',{}).get('measures',[])}; print(m.get('vulnerabilities','0'))" 2>/dev/null || echo '0')" >> "$GITHUB_ENV"
