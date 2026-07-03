@@ -51,7 +51,7 @@ jobs:
         run: |
           CLEAN_HOST_URL="${SONAR_HOST_URL%/}"
           PROJECT_KEY="taller_app_reservas"
-          METRICS_URL="${CLEAN_HOST_URL}/api/measures/component?component=${PROJECT_KEY}&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,maintainability_rating"
+          METRICS_URL="${CLEAN_HOST_URL}/api/measures/component?component=${PROJECT_KEY}&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,sqale_rating"
 
           echo "Consultando metricas en: ${METRICS_URL}"
 

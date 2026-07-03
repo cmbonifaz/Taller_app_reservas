@@ -42,7 +42,7 @@ def main():
         env_file.write(f"SONAR_DUPLICATION={measures.get('duplicated_lines_density', '0')}\n")
         env_file.write(f"SONAR_SECURITY_RATING={measures.get('security_rating', '')}\n")
         env_file.write(f"SONAR_RELIABILITY_RATING={measures.get('reliability_rating', '')}\n")
-        env_file.write(f"SONAR_MAINTAINABILITY_RATING={measures.get('maintainability_rating', '')}\n")
+        env_file.write(f"SONAR_MAINTAINABILITY_RATING={measures.get('sqale_rating', '')}\n")
 
     print("Variables escritas a GITHUB_ENV exitosamente.")
 
