@@ -131,7 +131,7 @@ jobs:
           node-version: '20'
 
       - name: Levantar aplicación con Docker Compose
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Esperar a que el frontend responda
         run: npx wait-on http://localhost:3000 --timeout 120000
@@ -179,4 +179,4 @@ jobs:
 
       - name: Apagar aplicación
         if: always()
-        run: docker-compose down
+        run: docker compose down
