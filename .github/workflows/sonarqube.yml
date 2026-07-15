@@ -130,6 +130,14 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Crear archivo de entorno para frontend
+        run: |
+          cat << 'EOF' > frontend/.env.production.local
+          NEXT_PUBLIC_API_URL=/api/auth
+          NEXT_PUBLIC_BOOKING_URL=/api/bookings
+          NEXT_PUBLIC_USER_URL=/api/users
+          EOF
+
       - name: Levantar aplicación con Docker Compose
         run: docker compose up -d
 
