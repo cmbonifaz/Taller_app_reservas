@@ -160,20 +160,7 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
-          cat << 'EOF' > telegram_dast_msg.txt
-          🕷️ ALERTA DAST
-          Informe automático generado por OWASP ZAP Baseline Scan
-          
-          ━━━━━━━━━━━━━━━━━━━━
-          
-          📌 Resumen del evento
-          Rama: ${{ env.GITHUB_REF_NAME }}
-          
-          ━━━━━━━━━━━━━━━━━━━━
-          
-          🔗 Enlaces
-          Artefactos y Reporte ZAP: ${{ env.GITHUB_SERVER_URL }}/${{ env.GITHUB_REPOSITORY }}/actions/runs/${{ env.GITHUB_RUN_ID }}
-          EOF
+          python tools/build_zap_telegram_message.py
 
       - name: Enviar mensaje a Telegram
         if: always()
