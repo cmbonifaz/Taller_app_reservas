@@ -30,6 +30,8 @@ jobs:
 
       - name: Ejecutar SonarQube Scanner
         uses: SonarSource/sonarqube-scan-action@master
+        with:
+          skipSignatureVerification: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -45,41 +47,48 @@ jobs:
       - name: Obtener metricas de SonarQube
         id: sonar_metrics
         if: always()
-        shell: bash
+        shell: powershell
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          CLEAN_HOST_URL="${SONAR_HOST_URL%/}"
-          PROJECT_KEY="taller_app_reservas"
-          METRICS_URL="${CLEAN_HOST_URL}/api/measures/component?component=${PROJECT_KEY}&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,sqale_rating"
+          $CleanHostUrl = $env:SONAR_HOST_URL.TrimEnd('/')
+          $ProjectKey = "taller_app_reservas"
+          $MetricsUrl = "${CleanHostUrl}/api/measures/component?component=${ProjectKey}&metricKeys=bugs,vulnerabilities,code_smells,ncloc,duplicated_lines_density,security_rating,reliability_rating,sqale_rating"
 
-          echo "Consultando metricas en: ${METRICS_URL}"
+          Write-Host "Consultando metricas en: $MetricsUrl"
 
-          METRICS="{}"
-          for i in 1 2 3 4 5; do
-            METRICS_RAW=$(curl -s -u "${SONAR_TOKEN}:" \
-              -H "ngrok-skip-browser-warning: true" \
-              "${METRICS_URL}")
+          $Metrics = "{}"
+          $Pair = "${env:SONAR_TOKEN}:"
+          $Bytes = [System.Text.Encoding]::ASCII.GetBytes($Pair)
+          $Base64 = [Convert]::ToBase64String($Bytes)
+          $BasicAuthValue = "Basic $Base64"
 
-            echo "Intento ${i} - Respuesta SonarQube: ${METRICS_RAW}"
+          $Headers = @{
+              Authorization = $BasicAuthValue
+              "ngrok-skip-browser-warning" = "true"
+          }
 
-            if echo "${METRICS_RAW}" | grep -q '"component"'; then
-              METRICS="${METRICS_RAW}"
-              echo "Metricas obtenidas en el intento ${i}."
-              break
-            else
-              echo "Intento ${i} fallido. Esperando 10 segundos..."
-              sleep 10
-            fi
-          done
+          for ($i = 1; $i -le 5; $i++) {
+              try {
+                  $Response = Invoke-RestMethod -Uri $MetricsUrl -Headers $Headers -Method Get
+                  $Metrics = $Response | ConvertTo-Json -Depth 100
+                  Write-Host "Intento $i - Respuesta SonarQube recibida."
+                  if ($Response.component) {
+                      Write-Host "Metricas obtenidas en el intento $i."
+                      break
+                  }
+              } catch {
+                  Write-Host "Intento $i fallido. Error: $_. Esperando 10 segundos..."
+                  Start-Sleep -Seconds 10
+              }
+          }
 
-          echo "${METRICS}" > sonar_metrics.json
+          [System.IO.File]::WriteAllText("$PWD/sonar_metrics.json", $Metrics)
           python tools/parse_sonar_metrics.py
 
       - name: Generar mensaje para Telegram
         if: always()
-        shell: bash
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
@@ -105,14 +114,18 @@ jobs:
 
       - name: Enviar mensaje a Telegram
         if: always()
-        shell: bash
+        shell: powershell
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text@telegram_msg.txt"
+          $Message = Get-Content -Path "telegram_msg.txt" -Raw
+          $Body = @{
+              chat_id = $env:TELEGRAM_CHAT_ID
+              text = $Message
+          }
+          $Url = "https://api.telegram.org/bot$($env:TELEGRAM_TOKEN)/sendMessage"
+          Invoke-RestMethod -Uri $Url -Method Post -Body $Body
 
       - name: Fallar el flujo si el Quality Gate no cumple
         if: steps.quality_gate.outcome != 'success'
