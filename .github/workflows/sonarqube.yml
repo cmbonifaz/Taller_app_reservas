@@ -16,6 +16,8 @@ jobs:
   sonarqube-analysis:
     name: SonarQube Scan y alerta Telegram
     runs-on: self-hosted
+    env:
+      PYTHONUTF8: 1
 
     steps:
       - name: Checkout del codigo
@@ -36,13 +38,13 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      - name: Verificar Quality Gate
+      - name: Verificar Quality Gate de SonarQube
         id: quality_gate
-        uses: SonarSource/sonarqube-quality-gate-action@master
         continue-on-error: true
-        timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          python tools/check_quality_gate.py
 
       - name: Obtener metricas de SonarQube
         id: sonar_metrics
@@ -100,7 +102,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_PROJECT_KEY: taller_app_reservas
-          QUALITY_GATE_STATUS: ${{ steps.quality_gate.outcome == 'success' && 'OK' || 'ERROR' }}
+          QUALITY_GATE_STATUS: ${{ env.QUALITY_GATE_STATUS || (steps.quality_gate.outcome == 'success' && 'OK' || 'ERROR') }}
           SONAR_BUGS: ${{ env.SONAR_BUGS }}
           SONAR_VULNERABILITIES: ${{ env.SONAR_VULNERABILITIES }}
           SONAR_CODE_SMELLS: ${{ env.SONAR_CODE_SMELLS }}
@@ -119,7 +121,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          $Message = Get-Content -Path "telegram_msg.txt" -Raw
+          $Message = Get-Content -Path "telegram_msg.txt" -Encoding UTF8 -Raw
           $Body = @{
               chat_id = $env:TELEGRAM_CHAT_ID
               text = $Message
