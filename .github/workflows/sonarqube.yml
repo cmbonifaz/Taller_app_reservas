@@ -15,7 +15,7 @@ permissions:
 jobs:
   sonarqube-analysis:
     name: SonarQube Scan y alerta Telegram
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout del codigo
@@ -74,8 +74,8 @@ jobs:
             fi
           done
 
-          echo "${METRICS}" > /tmp/sonar_metrics.json
-          python3 tools/parse_sonar_metrics.py
+          echo "${METRICS}" > sonar_metrics.json
+          python tools/parse_sonar_metrics.py
 
       - name: Generar mensaje para Telegram
         if: always()

@@ -4,7 +4,7 @@ import sys
 
 
 def main():
-    metrics_file = "/tmp/sonar_metrics.json"
+    metrics_file = "sonar_metrics.json"
 
     # Leer el JSON guardado por el step bash
     try:
